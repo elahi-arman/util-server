@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
+	"github.com/elahi-arman/util-server/internal/groupings"
 	"github.com/julienschmidt/httprouter"
 )
 
@@ -26,8 +28,8 @@ func NewServer(healthFile string, tokenFile string) (*server, error) {
 	}
 
 	s.updateToken()
-	router.GET("/randomize", s.randomize)
-	router.GET("/up", s.healthcheck)
+	router.GET("/randomize", s.WithTokenVerification(s.randomize))
+	router.GET("/up", s.WithTokenVerification(s.healthcheck))
 
 	return s, nil
 }
@@ -39,7 +41,7 @@ func (s *server) GetRouter() *httprouter.Router {
 func (s *server) randomize(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	bytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		fmt.Printf("received error while reading body: ", err)
+		fmt.Println("received error while reading body: ", err)
 		w.WriteHeader(400)
 		return
 	}
@@ -51,4 +53,27 @@ func (s *server) randomize(w http.ResponseWriter, r *http.Request, _ httprouter.
 		return
 	}
 
+	queryParams := r.URL.Query()
+	groupCount := 2
+	if groupsParam := queryParams.Get("groups"); groupsParam != "" {
+		p, err := strconv.Atoi(groupsParam)
+		if err != nil {
+			w.WriteHeader(400)
+			w.Write([]byte("expected groups query param to be a parseable integer"))
+			return
+		}
+
+		if p > 2 {
+			groupCount = p
+		}
+	}
+
+	output := groupings.RandomEvenLists(names, groupCount)
+	d, err := json.Marshal(output)
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Println("unable to marshal ouptut into a list", err)
+	}
+
+	w.Write(d)
 }
